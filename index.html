@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard de Vendas Porsche</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#f4f4f2; --card:#ffffff; --ink:#111111; --muted:#6b6b6b; --line:#e2e2df; --red:#d5001c; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Inter',system-ui,sans-serif; background:var(--bg); color:var(--ink); padding:24px 16px 40px; }
+  .wrap { max-width:1150px; margin:0 auto; }
+  header { border-bottom:3px solid var(--ink); padding-bottom:14px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:8px; }
+  h1 { font-size:26px; font-weight:700; letter-spacing:4px; text-transform:uppercase; }
+  h1 span { color:var(--red); }
+  header p { color:var(--muted); font-size:13px; }
+  .filters { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:14px; display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; align-items:end; }
+  .filters label { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); display:block; margin-bottom:4px; }
+  select, button { width:100%; padding:9px 10px; font:inherit; font-size:14px; border:1px solid var(--line); border-radius:4px; background:#fff; color:var(--ink); }
+  button { background:var(--ink); color:#fff; border:none; cursor:pointer; font-weight:500; }
+  button:hover { background:var(--red); }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin-bottom:18px; }
+  .kpi { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--red); border-radius:0; padding:16px; }
+  .kpi small { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); }
+  .kpi b { display:block; font-size:28px; font-weight:700; margin-top:6px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:16px; }
+  .card.full { grid-column:1 / -1; }
+  .card h2 { font-size:15px; font-weight:700; margin-bottom:4px; }
+  .card p { font-size:12px; color:var(--muted); margin-bottom:12px; }
+  .chart { position:relative; height:300px; }
+  footer { margin-top:20px; font-size:12px; color:var(--muted); line-height:1.6; }
+  @media (max-width:760px) { .grid { grid-template-columns:1fr; } h1 { font-size:20px; } .kpi b { font-size:24px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Vendas <span>Porsche</span></h1>
+      <p>100 vendas · base sanitizada · valores em dólar</p>
+    </div>
+    <p id="status"></p>
+  </header>
+
+  <section class="filters">
+    <div><label for="fLinha">Linha</label><select id="fLinha"></select></div>
+    <div><label for="fEstado">Estado</label><select id="fEstado"></select></div>
+    <div><label for="fAno">Ano do modelo</label><select id="fAno"></select></div>
+    <div><label for="fPag">Pagamento</label><select id="fPag"></select></div>
+    <div><button id="limpar">Limpar filtros</button></div>
+  </section>
+
+  <section class="kpis">
+    <div class="kpi"><small>Total de vendas</small><b id="kVendas">0</b></div>
+    <div class="kpi"><small>Receita total</small><b id="kReceita">$0</b></div>
+    <div class="kpi"><small>Ticket médio</small><b id="kTicket">$0</b></div>
+  </section>
+
+  <section class="grid">
+    <div class="card full">
+      <h2>1. Quais linhas de modelo geram mais receita?</h2>
+      <p>Receita somada por linha (718, 911, Cayenne, Macan, Panamera, Taycan).</p>
+      <div class="chart"><canvas id="cLinha"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>2. Em quais estados vendemos mais?</h2>
+      <p>Os 10 estados com maior receita.</p>
+      <div class="chart"><canvas id="cEstado"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>3. Como a receita se distribui por ano do modelo?</h2>
+      <p>Receita por ano de fabricação do carro vendido.</p>
+      <div class="chart"><canvas id="cAno"></canvas></div>
+    </div>
+  </section>
+
+  <footer>
+    Base tratada antes da análise: só colunas sanitizadas, nomes de clientes e vendedores removidos, preço e ano convertidos em número.
+    24 vendas tinham data inválida e foram mantidas, já que modelo, preço e estado estão corretos. Os gráficos usam o ano do modelo, não a data da venda.
+  </footer>
+</div>
+
+<script>
+const RAW = `id,data,modelo,ano,preco,milhas,pagamento,cidade,estado
+6,,718 Cayman,2022,79500.00,9800,Credit Card,Boston,MA
+7,2024-03-14,911 Turbo S,2024,235000.00,1200,Wire Transfer,Seattle,WA
+8,2024-04-18,Cayenne Coupe,2023,112750.00,6400,Financing,Austin,TX
+9,,Macan S,2021,68900.00,28,Cash,Denver,CO
+10,2024-05-22,Taycan 4S,2024,121000.00,0,Bank Transfer,Los Angeles,CA
+11,2024-08-06,Panamera 4,2023,104500.00,14500,Credit Card,Miami,FL
+12,2024-07-11,911 Carrera S,2020,96300.00,41000,Lease,New York,NY
+13,,Cayenne E-Hybrid,2022,89750.00,11744,Wire Transfer,San Diego,CA
+14,2024-08-19,718 Boxster,2021,73500.00,22300,Debit Card,Chicago,IL
+15,2024-09-02,Macan GTS,2024,95000.00,3500,Financing,Phoenix,AZ
+16,2024-09-17,Taycan Turbo,2023,153200.50,11,ACH Payment,Dallas,TX
+17,,911 GT3,2024,241000.00,750,Wire Transfer,Las Vegas,NV
+18,2024-05-11,Panamera Turbo S,2022,132000.00,19250,Cash,San Jose,CA
+19,2024-12-12,Cayenne Turbo GT,2024,188000.00,2100,Crypto Payment,Houston,TX
+20,2024-12-25,911 Carrera Cabriolet,2023,127800.00,12000,Credit Card,Atlanta,GA
+21,2025-01-06,Macan,2021,58900.00,33700,Bank Transfer,Orlando,FL
+22,,718 Spyder RS,2024,164000.00,900,Financing,Portland,OR
+23,2025-02-14,Taycan Cross Turismo,2023,118500.00,7800,Wire Transfer,Charlotte,NC
+24,,Cayenne S,2022,91300.00,16000,Credit Card,Nashville,TN
+25,2025-03-21,911 Targa 4S,2024,158750.00,2500,Lease,Minneapolis,MN
+26,2025-03-28,Panamera,2020,72000.00,49000,Bank Transfer,Philadelphia,PA
+27,2025-04-09,Macan Electric,2025,86500.00,0,Wire Transfer,San Antonio,TX
+28,,911 Dakar,2024,270000.00,1050,Cash,Salt Lake City,UT
+29,2025-05-12,Taycan GTS,2023,139000.00,6250,Financing,Raleigh,NC
+30,2025-06-18,Cayenne,2021,76800.00,38400,Credit Card,Detroit,MI
+31,,718 Cayman GT4 RS,2024,173600.00,400,Wire Transfer,Columbus,OH
+32,2025-07-07,911 Carrera GTS,2022,119900.00,13600,Cash,Indianapolis,IN
+33,2025-07-22,Panamera 4 E-Hybrid,2023,109250.00,8900,Lease,Fort Worth,TX
+34,2025-08-14,Macan T,2022,82000.00,21750,Wire Transfer,Jacksonville,FL
+35,2025-09-01,Taycan Turbo S,2025,214000.00,0,Crypto Payment,San Diego,CA
+36,,911 Carrera,2024,124500.00,4800,Credit Card,Tampa,FL
+37,2025-09-18,Cayenne S,2023,98200.00,12200,Bank Transfer,Sacramento,CA
+38,2025-10-04,Macan,2022,67500.00,24100,Financing,Cleveland,OH
+39,2025-10-12,Taycan,2025,116900.00,0,Wire Transfer,Milwaukee,WI
+40,2025-10-29,Panamera 4S,2024,112000.00,10,Cash,Kansas City,MO
+41,2025-02-11,718 Boxster,2021,74000.00,31000,Debit Card,Omaha,NE
+42,2025-11-16,911 Turbo,2024,198300.00,2400,Wire Transfer,Albuquerque,NM
+43,,Cayenne Coupe,2023,103750.00,6773,Wire Transfer,Tucson,AZ
+44,,Macan GTS,2024,93600.00,5800,Financing,Fresno,CA
+45,2025-12-07,Taycan 4S,2025,129000.00,0,ACH Payment,Virginia Beach,VA
+46,2025-12-22,Panamera Turbo,2022,136000.00,18400,Credit Card,Colorado Springs,CO
+47,,911 GT3 RS,2024,286500.00,700,Wire Transfer,Arlington,TX
+48,2026-01-08,Cayenne E-Hybrid,2023,92800.00,15000,Lease,Bakersfield,CA
+49,2026-01-15,Macan T,2022,72400.00,19750,Cash,Mesa,AZ
+50,2026-01-28,Taycan Turbo,2025,158500.00,3200,Crypto Payment,Atlanta,GA
+51,2026-02-03,718 Cayman,2021,69900.00,27600,Bank Transfer,Long Beach,CA
+52,,911 Targa 4,2024,141250.00,2100,Financing,Oakland,CA
+53,2026-02-19,Panamera,2020,71500.00,52000,Wire Transfer,Tulsa,OK
+54,2026-02-25,Cayenne Turbo,2023,146800.00,11300,Credit Card,Wichita,KS
+55,2026-03-01,Macan Electric,2025,89700.00,0,Lease,New Orleans,LA
+56,2026-03-14,911 Carrera S,2022,104600.00,15900,Bank Transfer,Honolulu,HI
+57,,Taycan GTS,2024,142000.00,6600,Wire Transfer,Anaheim,CA
+58,2026-04-08,Cayenne,2021,78400.00,40250,Cash,Henderson,NV
+59,,718 Spyder RS,2025,169000.00,850,Financing,Lexington,KY
+60,2026-04-21,911 Dakar,2024,268900.00,1400,Credit Card,Riverside,CA
+61,2026-04-29,Panamera 4,2023,101300.00,12700,Wire Transfer,Corpus Christi,TX
+62,2026-05-05,Macan S,2021,66750.00,29800,Cash,St. Louis,MO
+63,2026-05-14,Taycan Cross Turismo,2024,127900.00,7500,Lease,Pittsburgh,PA
+64,2026-05-23,Cayenne Turbo GT,2025,200000.00,1950,Wire Transfer,Cincinnati,OH
+65,2026-06-02,911 Carrera Cabriolet,2023,132000.00,8800,Crypto Payment,Anchorage,AK
+66,2026-06-15,718 Cayman GT4 RS,2024,176400.00,600,Credit Card,Plano,TX
+67,,Panamera 4 E-Hybrid,2022,108500.00,16200,Bank Transfer,Newark,NJ
+68,2026-07-07,Macan,2021,59000.00,36000,Financing,Greensboro,NC
+69,2026-07-20,Taycan Turbo S,2025,218000.00,0,Wire Transfer,Lincoln,NE
+70,,Cayenne S,2024,99950.00,5300,Debit Card,Jersey City,NJ
+71,2026-04-08,911 Carrera GTS,2024,121750.00,5872,Credit Card,Chandler,AZ
+72,2026-08-18,718 Boxster GTS,2023,91500.00,13300,Lease,Reno,NV
+73,2026-08-31,Panamera Turbo S,2022,134000.00,20100,Wire Transfer,Buffalo,NY
+74,2026-09-09,Macan GTS,2024,96800.00,0,ACH Payment,Durham,NC
+75,2026-09-17,Taycan 4S,2025,131600.00,2900,Wire Transfer,Laredo,TX
+76,2026-09-28,Cayenne E-Hybrid,2023,94300.00,13100,Cash,Madison,WI
+77,2026-10-06,911 Turbo S,2025,242000.00,1100,Crypto Payment,Lubbock,TX
+78,2026-10-16,718 Cayman S,2022,82750.00,22500,Credit Card,Toledo,OH
+79,2026-10-29,Macan Electric,2026,91300.00,0,Wire Transfer,Irvine,CA
+80,2026-11-03,Panamera,2021,79900.00,44800,Financing,Garland,TX
+81,,Cayenne Coupe,2024,111000.00,6700,Bank Transfer,Irving,TX
+82,2026-12-11,911 Targa 4S,2023,156500.00,4200,Cash,Chesapeake,VA
+83,2026-12-24,Taycan,2025,119900.00,1250,Lease,Scottsdale,AZ
+84,,Macan T,2022,73200.00,18600,Wire Transfer,Norfolk,VA
+85,2026-12-28,911 GT3,2024,224000.00,3000,Wire Transfer,Boise,ID
+86,2027-01-15,911 Carrera,2024,126900.00,7200,Credit Card,Orlando,FL
+87,2027-01-29,Cayenne,2023,84500.00,21400,Bank Transfer,San Jose,CA
+88,2027-02-11,Macan S,2022,69800.00,26300,Financing,Tampa,FL
+89,,Taycan 4S,2025,132700.00,0,Wire Transfer,Denver,CO
+90,2027-03-05,Panamera,2021,81000.00,42,Cash,Austin,TX
+91,2027-03-18,718 Cayman,2023,78900.00,17500,Debit Card,Seattle,WA
+92,2027-04-02,911 Turbo S,2026,249300.00,900,Wire Transfer,Boston,MA
+93,,Cayenne Coupe,2024,108750.00,5530,Wire Transfer,Phoenix,AZ
+94,,Macan Electric,2026,92600.00,0,Financing,Chicago,IL
+95,2027-05-12,Taycan Turbo,2025,164000.00,0,ACH Payment,Dallas,TX
+96,2027-05-27,Panamera 4S,2024,119000.00,13400,Credit Card,San Francisco,CA
+97,,911 GT3,2026,232500.00,1700,Wire Transfer,Las Vegas,NV
+98,2027-06-18,Cayenne E-Hybrid,2023,96800.00,14000,Lease,Charlotte,NC
+99,2027-07-03,Macan T,2022,74400.00,20750,Cash,Mesa,AZ
+100,2027-07-22,Taycan GTS,2025,148500.00,5200,Crypto Payment,Atlanta,GA
+101,2027-08-08,718 Boxster,2021,71900.00,29600,Bank Transfer,Long Beach,CA
+102,,911 Targa 4,2024,143250.00,3100,Financing,Oakland,CA
+103,2027-09-19,Panamera Turbo,2020,137500.00,48000,Wire Transfer,Tulsa,OK
+104,2027-09-25,Cayenne Turbo GT,2025,204800.00,3300,Credit Card,Wichita,KS
+105,2027-10-01,911 Dakar,2024,271700.00,1050,Lease,New Orleans,LA`;
+
+const PAG = { 'Credit Card':'Cartão de crédito','Debit Card':'Cartão de débito','Wire Transfer':'Transferência bancária (wire)','Bank Transfer':'Transferência bancária','ACH Payment':'Pagamento ACH','Financing':'Financiamento','Lease':'Leasing','Cash':'Dinheiro','Crypto Payment':'Criptomoeda' };
+
+const dados = RAW.trim().split('\n').slice(1).map(l => {
+  const c = l.split(',');
+  return { id:+c[0], data:c[1], modelo:c[2], linha:c[2].split(' ')[0], ano:+c[3], preco:+c[4], milhas:+c[5], pagamento:PAG[c[6]] || c[6], cidade:c[7], estado:c[8] };
+});
+
+const usd = v => new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(v);
+const curto = v => v >= 1e6 ? '$' + (v/1e6).toFixed(1) + 'M' : '$' + Math.round(v/1e3) + 'k';
+
+const filtros = { fLinha:'linha', fEstado:'estado', fAno:'ano', fPag:'pagamento' };
+Object.entries(filtros).forEach(([id, campo]) => {
+  const sel = document.getElementById(id);
+  const vals = [...new Set(dados.map(d => d[campo]))].sort((a,b) => a > b ? 1 : -1);
+  sel.innerHTML = '<option value="">Todos</option>' + vals.map(v => `<option value="${v}">${v}</option>`).join('');
+  sel.addEventListener('change', render);
+});
+document.getElementById('limpar').addEventListener('click', () => {
+  Object.keys(filtros).forEach(id => document.getElementById(id).value = '');
+  render();
+});
+
+function soma(lista, campo) {
+  const m = {};
+  lista.forEach(d => m[d[campo]] = (m[d[campo]] || 0) + d.preco);
+  return m;
+}
+
+Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+Chart.defaults.color = '#6b6b6b';
+const base = (horizontal) => ({
+  responsive:true, maintainAspectRatio:false, indexAxis: horizontal ? 'y' : 'x',
+  plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: ctx => usd(horizontal ? ctx.parsed.x : ctx.parsed.y) } } },
+  scales:{
+    [horizontal ? 'x' : 'y']: { ticks:{ callback: v => curto(v) }, grid:{ color:'#eeeeec' } },
+    [horizontal ? 'y' : 'x']: { grid:{ display:false } }
+  }
+});
+const novo = (id, tipo, horizontal) => new Chart(document.getElementById(id), { type:tipo, data:{ labels:[], datasets:[{ data:[], backgroundColor:'#111111', borderColor:'#d5001c', borderWidth:0, borderRadius:3 }] }, options:base(horizontal) });
+const gLinha = novo('cLinha','bar',true);
+const gEstado = novo('cEstado','bar',true);
+const gAno = novo('cAno','bar',false);
+
+function pinta(grafico, pares) {
+  grafico.data.labels = pares.map(p => p[0]);
+  grafico.data.datasets[0].data = pares.map(p => p[1]);
+  const max = Math.max(...pares.map(p => p[1]));
+  grafico.data.datasets[0].backgroundColor = pares.map(p => p[1] === max ? '#d5001c' : '#111111');
+  grafico.update();
+}
+
+function render() {
+  const f = {};
+  Object.entries(filtros).forEach(([id, campo]) => f[campo] = document.getElementById(id).value);
+  const lista = dados.filter(d => Object.entries(f).every(([k,v]) => !v || String(d[k]) === v));
+
+  const receita = lista.reduce((s,d) => s + d.preco, 0);
+  document.getElementById('kVendas').textContent = lista.length;
+  document.getElementById('kReceita').textContent = usd(receita);
+  document.getElementById('kTicket').textContent = lista.length ? usd(receita / lista.length) : '$0';
+  document.getElementById('status').textContent = lista.length === dados.length ? 'Sem filtros' : `${lista.length} de ${dados.length} vendas`;
+
+  pinta(gLinha, Object.entries(soma(lista,'linha')).sort((a,b) => b[1]-a[1]));
+  pinta(gEstado, Object.entries(soma(lista,'estado')).sort((a,b) => b[1]-a[1]).slice(0,10));
+  pinta(gAno, Object.entries(soma(lista,'ano')).sort((a,b) => a[0]-b[0]));
+}
+render();
+</script>
+</body>
+</html>
